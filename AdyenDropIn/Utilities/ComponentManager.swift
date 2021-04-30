@@ -1,5 +1,5 @@
 //
-// Copyright (c) 2022 Adyen N.V.
+// Copyright (c) 2020 Adyen N.V.
 //
 // This file is open source and available under the MIT license. See the LICENSE file for more info.
 //
@@ -8,249 +8,155 @@ import Adyen
 #if canImport(AdyenCard)
     import AdyenCard
 #endif
-#if canImport(AdyenComponents)
-    import AdyenComponents
-#endif
-#if canImport(AdyenActions)
-    import AdyenActions
-#endif
 import Foundation
 
 internal final class ComponentManager {
-
+    
     /// Indicates the UI configuration of the drop in component.
     private var style: DropInComponent.Style
-
-    private let partialPaymentEnabled: Bool
     
-    private let supportsEditingStoredPaymentMethods: Bool
-
-    internal let remainingAmount: Amount?
-
-    internal let order: PartialPaymentOrder?
-    
-    internal let apiContext: APIContext
-
-    internal weak var presentationDelegate: PresentationDelegate?
+    /// Defines the environment used to make networking requests.
+    internal var environment: Environment = .live
     
     internal init(paymentMethods: PaymentMethods,
-                  configuration: DropInComponent.Configuration,
-                  style: DropInComponent.Style,
-                  partialPaymentEnabled: Bool = true,
-                  remainingAmount: Amount? = nil,
-                  order: PartialPaymentOrder?,
-                  supportsEditingStoredPaymentMethods: Bool = false,
-                  presentationDelegate: PresentationDelegate) {
+                  payment: Payment?,
+                  configuration: DropInComponent.PaymentMethodsConfiguration,
+                  style: DropInComponent.Style) {
         self.paymentMethods = paymentMethods
+        self.payment = payment
         self.configuration = configuration
-        self.apiContext = configuration.apiContext
         self.style = style
-        self.partialPaymentEnabled = partialPaymentEnabled
-        self.remainingAmount = remainingAmount
-        self.order = order
-        self.supportsEditingStoredPaymentMethods = supportsEditingStoredPaymentMethods
-        self.presentationDelegate = presentationDelegate
     }
     
     // MARK: - Internal
     
-    internal lazy var sections: [ComponentsSection] = {
-
-        // Paid section
-        let amountString: String = remainingAmount.map(\.formatted) ??
-            localizedString(.amount, configuration.localizationParameters).lowercased()
-        let footerTitle = localizedString(.partialPaymentPayRemainingAmount,
-                                          configuration.localizationParameters,
-                                          amountString)
-        let paidFooter = ListSectionFooter(title: footerTitle,
-                                           style: style.listComponent.partialPaymentSectionFooter)
-        let paidSection = ComponentsSection(header: nil,
-                                            components: paidComponents,
-                                            footer: paidFooter)
-
-        // Stored section
-        let storedSection: ComponentsSection
+    internal lazy var components: SectionedComponents = {
+        // Filter out payment methods without the Ecommerce shopper interaction.
+        let storedPaymentMethods = paymentMethods.stored.filter { $0.supportedShopperInteractions.contains(.shopperPresent) }
         
-        if supportsEditingStoredPaymentMethods {
-            let allowDeleting = configuration.paymentMethodsList.allowDisablingStoredPaymentMethods
-            let editingStyle: EditingStyle = allowDeleting ? .delete : .none
-            storedSection = ComponentsSection(header: .init(title: localizedString(.paymentMethodsStoredMethods,
-                                                                                   configuration.localizationParameters),
-                                                            editingStyle: editingStyle,
-                                                            style: ListSectionHeaderStyle()),
-                                              components: storedComponents,
-                                              footer: nil)
-        } else {
-            storedSection = ComponentsSection(components: storedComponents)
-        }
-        
-        // Regular section
-        let localizedTitle = localizedString(.paymentMethodsOtherMethods, configuration.localizationParameters)
-        let regularSectionTitle = storedSection.components.isEmpty ? nil : localizedTitle
-        let regularHeader: ListSectionHeader? = regularSectionTitle.map {
-            ListSectionHeader(title: $0, style: style.listComponent.sectionHeader)
-        }
-        let regularSection = ComponentsSection(header: regularHeader, components: regularComponents, footer: nil)
-        
-        return [paidSection, storedSection, regularSection].filter {
-            $0.components.isEmpty == false
-        }
+        return SectionedComponents(
+            stored: storedPaymentMethods.compactMap { component(for: $0) },
+            regular: paymentMethods.regular.compactMap { component(for: $0) }
+        )
     }()
-
-    // Filter out payment methods without the Ecommerce shopper interaction.
-    internal lazy var storedComponents: [PaymentComponent] = paymentMethods.stored.filter {
-        $0.supportedShopperInteractions.contains(.shopperPresent)
-    }.compactMap(component(for:))
-
-    internal lazy var regularComponents = paymentMethods.regular.compactMap(component(for:))
-
-    internal lazy var paidComponents = paymentMethods.paid.compactMap(component(for:))
-    
-    /// Returns the only regular component that is not an instant payment,
-    /// when no other payment method exists.
-    internal var singleRegularComponent: (PaymentComponent & PresentableComponent)? {
-        guard storedComponents.isEmpty,
-              paidComponents.isEmpty,
-              regularComponents.count == 1,
-              let regularComponent = regularComponents.first as? (PaymentComponent & PresentableComponent) else { return nil }
-        return regularComponent
-    }
     
     // MARK: - Private
     
     private func component(for paymentMethod: PaymentMethod) -> PaymentComponent? {
-        guard isAllowed(paymentMethod) else {
-            // swiftlint:disable:next line_length
-            AdyenAssertion.assertionFailure(message: "For voucher payment methods like \(paymentMethod.name) it is required to add a suitable text for the key NSPhotoLibraryAddUsageDescription in the Application Info.plist, to enable the shopper to save the voucher to their photo library.")
-            return nil
-        }
-
-        guard let paymentComponent = paymentMethod.buildComponent(using: self) else { return nil }
-
+        let paymentComponent: PaymentComponent? = paymentMethod.buildComponent(using: self)
+        
+        paymentComponent?.clientKey = configuration.clientKey
+        paymentComponent?.environment = environment
+        
         if var paymentComponent = paymentComponent as? Localizable {
             paymentComponent.localizationParameters = configuration.localizationParameters
         }
-
-        paymentComponent.payment = configuration.payment
-        paymentComponent.order = order
+        
         return paymentComponent
-    }
-
-    private func isAllowed(_ paymentMethod: PaymentMethod) -> Bool {
-        guard isVoucherPaymentMethod(paymentMethod) else { return true }
-        return Bundle.main.object(forInfoDictionaryKey: "NSPhotoLibraryAddUsageDescription") != nil
-    }
-
-    private func isVoucherPaymentMethod(_ paymentMethod: PaymentMethod) -> Bool {
-        VoucherPaymentMethod.allCases.map(\.rawValue).contains(paymentMethod.type)
     }
     
     // MARK: - Private
     
     private let paymentMethods: PaymentMethods
-    private let configuration: DropInComponent.Configuration
+    private let payment: Payment?
+    private let configuration: DropInComponent.PaymentMethodsConfiguration
     
-    private func createCardComponent(with paymentMethod: AnyCardPaymentMethod) -> PaymentComponent? {
-        CardComponent(paymentMethod: paymentMethod,
-                      apiContext: apiContext,
-                      configuration: configuration.card,
-                      shopperInformation: configuration.shopper,
-                      style: style.formComponent)
+    private func createCardComponent(with paymentMethod: PaymentMethod) -> PaymentComponent? {
+        let cardConfiguration = configuration.card
+        
+        guard let paymentMethod = paymentMethod as? AnyCardPaymentMethod else { return nil }
+        
+        var cardComponent: CardComponent?
+        
+        if let clientKey = configuration.clientKey {
+            cardComponent = CardComponent(paymentMethod: paymentMethod,
+                                          clientKey: clientKey,
+                                          style: style.formComponent)
+            
+        } else if let publicKey = configuration.card.deprecatedPublicKey {
+            cardComponent = CardComponent.component(paymentMethod: paymentMethod,
+                                                    publicKey: publicKey,
+                                                    style: style.formComponent)
+        } else {
+            adyenPrint("Failed to instantiate CardComponent because client key is not configured.")
+            return nil
+        }
+        
+        cardComponent?.showsHolderNameField = cardConfiguration.showsHolderNameField
+        cardComponent?.showsStorePaymentMethodField = cardConfiguration.showsStorePaymentMethodField
+        cardComponent?.showsSecurityCodeField = cardConfiguration.showsSecurityCodeField
+        cardComponent?.storedCardConfiguration = cardConfiguration.stored
+        
+        return cardComponent
     }
     
     private func createBancontactComponent(with paymentMethod: BCMCPaymentMethod) -> PaymentComponent? {
         let cardConfiguration = configuration.card
-        let configuration = CardComponent.Configuration(showsHolderNameField: cardConfiguration.showsHolderNameField,
-                                                        showsStorePaymentMethodField: cardConfiguration.showsStorePaymentMethodField,
-                                                        showsSecurityCodeField: cardConfiguration.showsSecurityCodeField,
-                                                        storedCardConfiguration: cardConfiguration.stored)
-
-        return BCMCComponent(paymentMethod: paymentMethod,
-                             configuration: configuration,
-                             apiContext: apiContext,
-                             style: style.formComponent)
+        
+        var component: BCMCComponent?
+        
+        if let clientKey = configuration.clientKey {
+            component = BCMCComponent(paymentMethod: paymentMethod,
+                                      clientKey: clientKey,
+                                      style: style.formComponent)
+            
+        } else if let publicKey = configuration.card.deprecatedPublicKey {
+            component = BCMCComponent.component(paymentMethod: paymentMethod,
+                                                publicKey: publicKey,
+                                                style: style.formComponent)
+        } else {
+            adyenPrint("Failed to instantiate BCMCComponent because client key is not configured.")
+            return nil
+        }
+        
+        component?.showsHolderNameField = cardConfiguration.showsHolderNameField
+        component?.showsStorePaymentMethodField = cardConfiguration.showsStorePaymentMethodField
+        
+        return component
     }
     
-    private func createPreApplePayComponent(with paymentMethod: ApplePayPaymentMethod) -> PaymentComponent? {
-        guard let applePay = configuration.applePay else {
-            adyenPrint("Failed to instantiate ApplePayComponent because ApplePayConfiguration is missing")
+    private func createApplePayComponent(with paymentMethod: ApplePayPaymentMethod) -> PaymentComponent? {
+        guard
+            let payment = payment,
+            let configuration = configuration.applePay.componentConfiguration()
+        else {
+            adyenPrint("Failed to instantiate ApplePayComponent because ApplePayConfiguration is missing data")
             return nil
         }
-        
-        guard let payment = configuration.payment else {
-            adyenPrint("Failed to instantiate ApplePayComponent because payment is missing")
-            return nil
-        }
-        
-        do {
-            return try PreApplePayComponent(paymentMethod: paymentMethod,
-                                            apiContext: apiContext,
-                                            payment: payment,
-                                            configuration: applePay,
-                                            style: style.applePay)
-        } catch {
-            adyenPrint("Failed to instantiate ApplePayComponent because of error: \(error.localizedDescription)")
-            return nil
-        }
+
+        return try? PreApplePayComponent(payment: payment,
+                                         paymentMethod: paymentMethod,
+                                         configuration: configuration)
     }
     
     private func createSEPAComponent(_ paymentMethod: SEPADirectDebitPaymentMethod) -> SEPADirectDebitComponent {
         SEPADirectDebitComponent(paymentMethod: paymentMethod,
-                                 apiContext: apiContext,
                                  style: style.formComponent)
-    }
-
-    private func createBACSDirectDebit(_ paymentMethod: BACSDirectDebitPaymentMethod) -> BACSDirectDebitComponent {
-        var bacsConfiguration: BACSDirectDebitComponent.Configuration?
-        if let payment = configuration.payment {
-            bacsConfiguration = .init(payment: payment)
-        }
-
-        let bacsDirectDebitComponent = BACSDirectDebitComponent(paymentMethod: paymentMethod,
-                                                                apiContext: apiContext,
-                                                                configuration: bacsConfiguration)
-        bacsDirectDebitComponent.presentationDelegate = presentationDelegate
-        return bacsDirectDebitComponent
-    }
-    
-    private func createACHDirectDebitComponent(_ paymentMethod: ACHDirectDebitPaymentMethod) -> ACHDirectDebitComponent {
-        ACHDirectDebitComponent(configuration: ACHDirectDebitComponent.Configuration(),
-                                paymentMethod: paymentMethod,
-                                apiContext: apiContext,
-                                shopperInformation: configuration.shopper,
-                                localizationParameters: configuration.localizationParameters,
-                                style: style.formComponent)
     }
     
     private func createQiwiWalletComponent(_ paymentMethod: QiwiWalletPaymentMethod) -> QiwiWalletComponent {
-        let config = QiwiWalletComponentConfiguration(style: style.formComponent,
-                                                      shopperInformation: configuration.shopper,
-                                                      localizationParameters: configuration.localizationParameters)
-        return QiwiWalletComponent(paymentMethod: paymentMethod,
-                                   apiContext: apiContext, configuration: config)
+        QiwiWalletComponent(paymentMethod: paymentMethod, style: style.formComponent)
     }
     
     private func createMBWayComponent(_ paymentMethod: MBWayPaymentMethod) -> MBWayComponent? {
-        let config = MBWayComponentConfiguration(style: style.formComponent,
-                                                 shopperInformation: configuration.shopper,
-                                                 localizationParameters: configuration.localizationParameters)
-        return MBWayComponent(paymentMethod: paymentMethod,
-                              apiContext: apiContext, configuration: config)
+        guard configuration.clientKey != nil else {
+            // swiftlint:disable:next line_length
+            adyenPrint("Failed to instantiate MBWayComponent because client key is not configured. Please supply the client key in the PaymentMethodsConfiguration.")
+            return nil
+        }
+        return MBWayComponent(paymentMethod: paymentMethod, style: style.formComponent)
     }
 
     private func createBLIKComponent(_ paymentMethod: BLIKPaymentMethod) -> BLIKComponent? {
-        BLIKComponent(paymentMethod: paymentMethod,
-                      apiContext: apiContext,
-                      style: style.formComponent)
+        guard configuration.clientKey != nil else {
+            // swiftlint:disable:next line_length
+            adyenPrint("Failed to instantiate BLIKComponent because client key is not configured. Please supply the client key in the PaymentMethodsConfiguration.")
+            return nil
+        }
+
+        return BLIKComponent(paymentMethod: paymentMethod, style: style.formComponent)
     }
     
-    private func createBoletoComponent(_ paymentMethod: BoletoPaymentMethod) -> BoletoComponent {
-        BoletoComponent(configuration: .init(boletoPaymentMethod: paymentMethod,
-                                             payment: configuration.payment,
-                                             shopperInformation: configuration.shopper,
-                                             showEmailAddress: true),
-                        apiContext: apiContext)
-    }
 }
 
 // MARK: - PaymentComponentBuilder
@@ -264,12 +170,12 @@ extension ComponentManager: PaymentComponentBuilder {
     
     /// :nodoc:
     internal func build(paymentMethod: StoredPaymentMethod) -> PaymentComponent? {
-        StoredPaymentMethodComponent(paymentMethod: paymentMethod, apiContext: apiContext)
+        StoredPaymentMethodComponent(paymentMethod: paymentMethod)
     }
     
     /// :nodoc:
     internal func build(paymentMethod: StoredBCMCPaymentMethod) -> PaymentComponent? {
-        StoredPaymentMethodComponent(paymentMethod: paymentMethod, apiContext: apiContext)
+        StoredPaymentMethodComponent(paymentMethod: paymentMethod)
     }
     
     /// :nodoc:
@@ -285,7 +191,6 @@ extension ComponentManager: PaymentComponentBuilder {
     /// :nodoc:
     internal func build(paymentMethod: IssuerListPaymentMethod) -> PaymentComponent? {
         IssuerListComponent(paymentMethod: paymentMethod,
-                            apiContext: apiContext,
                             style: style.listComponent)
     }
     
@@ -293,29 +198,17 @@ extension ComponentManager: PaymentComponentBuilder {
     internal func build(paymentMethod: SEPADirectDebitPaymentMethod) -> PaymentComponent? {
         createSEPAComponent(paymentMethod)
     }
-
-    /// :nodoc:
-    internal func build(paymentMethod: BACSDirectDebitPaymentMethod) -> PaymentComponent? {
-        createBACSDirectDebit(paymentMethod)
-    }
-    
-    /// :nodoc:
-    internal func build(paymentMethod: ACHDirectDebitPaymentMethod) -> PaymentComponent? {
-        createACHDirectDebitComponent(paymentMethod)
-    }
     
     /// :nodoc:
     internal func build(paymentMethod: ApplePayPaymentMethod) -> PaymentComponent? {
-        createPreApplePayComponent(with: paymentMethod)
+        createApplePayComponent(with: paymentMethod)
     }
     
     /// :nodoc:
     internal func build(paymentMethod: WeChatPayPaymentMethod) -> PaymentComponent? {
         guard let classObject = loadTheConcreteWeChatPaySDKActionComponentClass() else { return nil }
         guard classObject.isDeviceSupported() else { return nil }
-        return InstantPaymentComponent(paymentMethod: paymentMethod,
-                                       paymentData: nil,
-                                       apiContext: apiContext)
+        return EmptyPaymentComponent(paymentMethod: paymentMethod)
     }
     
     /// :nodoc:
@@ -332,55 +225,26 @@ extension ComponentManager: PaymentComponentBuilder {
     internal func build(paymentMethod: BLIKPaymentMethod) -> PaymentComponent? {
         createBLIKComponent(paymentMethod)
     }
-
-    /// :nodoc:
-    internal func build(paymentMethod: EContextPaymentMethod) -> PaymentComponent? {
-        let config = BasicPersonalInfoComponentConfiguration(style: style.formComponent,
-                                                             shopperInformation: configuration.shopper,
-                                                             localizationParameters: configuration.localizationParameters)
-        return BasicPersonalInfoFormComponent(paymentMethod: paymentMethod,
-                                              apiContext: apiContext,
-                                              configuration: config)
-    }
-
-    /// :nodoc:
-    internal func build(paymentMethod: DokuPaymentMethod) -> PaymentComponent? {
-        let config = DokuComponentConfiguration(style: style.formComponent,
-                                                shopperInformation: configuration.shopper,
-                                                localizationParameters: configuration.localizationParameters)
-        return DokuComponent(paymentMethod: paymentMethod,
-                             apiContext: apiContext,
-                             configuration: config)
-    }
-
-    /// :nodoc:
-    internal func build(paymentMethod: GiftCardPaymentMethod) -> PaymentComponent? {
-        guard partialPaymentEnabled else { return nil }
-        return GiftCardComponent(paymentMethod: paymentMethod,
-                                 apiContext: apiContext,
-                                 style: style.formComponent)
-    }
-    
-    /// :nodoc:
-    internal func build(paymentMethod: BoletoPaymentMethod) -> PaymentComponent? {
-        createBoletoComponent(paymentMethod)
-    }
-    
-    /// :nodoc:
-    internal func build(paymentMethod: AffirmPaymentMethod) -> PaymentComponent? {
-        let config = AffirmComponentConfiguration(style: style.formComponent,
-                                                  shopperInformation: configuration.shopper,
-                                                  localizationParameters: configuration.localizationParameters)
-        return AffirmComponent(paymentMethod: paymentMethod,
-                               apiContext: apiContext,
-                               configuration: config)
-    }
     
     /// :nodoc:
     internal func build(paymentMethod: PaymentMethod) -> PaymentComponent? {
-        InstantPaymentComponent(paymentMethod: paymentMethod,
-                                paymentData: nil,
-                                apiContext: apiContext)
+        EmptyPaymentComponent(paymentMethod: paymentMethod)
+    }
+    
+}
+
+extension DropInComponent.PaymentMethodsConfiguration.ApplePayConfiguration {
+
+    fileprivate func componentConfiguration() -> ApplePayComponent.Configuration? {
+        guard let summaryItems = summaryItems, let merchantIdentifier = merchantIdentifier else {
+            return nil
+        }
+
+        return ApplePayComponent.Configuration(summaryItems: summaryItems,
+                                               merchantIdentifier: merchantIdentifier,
+                                               requiredBillingContactFields: requiredBillingContactFields,
+                                               requiredShippingContactFields: requiredShippingContactFields,
+                                               excludedCardNetworks: excludedCardNetworks)
     }
 
 }

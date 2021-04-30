@@ -1,11 +1,11 @@
 //
-// Copyright (c) 2021 Adyen N.V.
+// Copyright (c) 2020 Adyen N.V.
 //
 // This file is open source and available under the MIT license. See the LICENSE file for more info.
 //
 
-import PassKit
 import UIKit
+import PassKit
 
 internal final class ComponentsView: UIView {
     
@@ -13,8 +13,7 @@ internal final class ComponentsView: UIView {
         super.init(frame: .zero)
         
         addSubview(tableView)
-        
-        tableView.adyen.anchor(inside: self)
+        configureConstraints()
     }
     
     @available(*, unavailable)
@@ -53,6 +52,17 @@ internal final class ComponentsView: UIView {
             .first
             .map { $0.selectionHandler() }
     }
+
+    private func configureConstraints() {
+        let constraints = [
+            tableView.topAnchor.constraint(equalTo: topAnchor),
+            tableView.leadingAnchor.constraint(equalTo: leadingAnchor),
+            tableView.trailingAnchor.constraint(equalTo: trailingAnchor),
+            tableView.bottomAnchor.constraint(equalTo: bottomAnchor)
+        ]
+
+        NSLayoutConstraint.activate(constraints)
+    }
     
     private func setUpApplePayCell(_ cell: UITableViewCell) {
         let style: PKPaymentButtonStyle
@@ -76,18 +86,18 @@ internal final class ComponentsView: UIView {
             payButton.centerYAnchor.constraint(equalTo: cell.contentView.centerYAnchor)
         ])
         
-        payButton.addTarget(self, action: #selector(onApplePayButtonTap), for: .touchUpInside)
+        payButton.addTarget(self, action: #selector(onApplePayButtonTap), for: .primaryActionTriggered)
     }
 }
 
 extension ComponentsView: UITableViewDataSource {
     
     internal func numberOfSections(in tableView: UITableView) -> Int {
-        items.count
+        return items.count
     }
     
     internal func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
-        items[section].count
+        return items[section].count
     }
     
     internal func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
