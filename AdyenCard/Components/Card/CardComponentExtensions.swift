@@ -1,53 +1,53 @@
 //
-// Copyright (c) 2021 Adyen N.V.
+// Copyright (c) 2020 Adyen N.V.
 //
 // This file is open source and available under the MIT license. See the LICENSE file for more info.
 //
 
 import Adyen
-#if canImport(AdyenEncryption)
-    import AdyenEncryption
-#endif
-import UIKit
+import Foundation
 
-extension CardComponent {
+// swiftlint:disable explicit_acl
+
+internal extension CardComponent {
     
-    internal func didSelectSubmitButton() {
-        guard cardViewController.validate() else {
+    func isPublicKeyValid(key: String) -> Bool {
+        let validator = CardPublicKeyValidator()
+        return validator.isValid(key)
+    }
+    
+    private func getEncryptedCard(publicKey: String) throws -> CardEncryptor.EncryptedCard {
+        let card = CardEncryptor.Card(number: numberItem.value,
+                                      securityCode: securityCodeItem.value,
+                                      expiryMonth: expiryDateItem.value[0...1],
+                                      expiryYear: "20" + expiryDateItem.value[2...3])
+        return try CardEncryptor.encryptedCard(for: card, publicKey: publicKey)
+    }
+    
+    func didSelectSubmitButton() {
+        guard formViewController.validate() else {
             return
         }
         
-        cardViewController.startLoading()
-
-        fetchCardPublicKey(notifyingDelegateOnFailure: true) { [weak self] in
+        button.showsActivityIndicator = true
+        formViewController.view.isUserInteractionEnabled = false
+        
+        fetchCardPublicKey { [weak self] in
             self?.submitEncryptedCardData(cardPublicKey: $0)
         }
     }
     
     private func submitEncryptedCardData(cardPublicKey: String) {
         do {
-            let card = cardViewController.card
-            let encryptedCard = try CardEncryptor.encrypt(card: card, with: cardPublicKey)
-            let kcpDetails = try cardViewController.kcpDetails?.encrypt(with: cardPublicKey)
-            let details = CardDetails(paymentMethod: cardPaymentMethod,
+            let encryptedCard = try getEncryptedCard(publicKey: cardPublicKey)
+            let details = CardDetails(paymentMethod: paymentMethod as! AnyCardPaymentMethod, // swiftlint:disable:this force_cast
                                       encryptedCard: encryptedCard,
-                                      holderName: card.holder,
-                                      selectedBrand: cardViewController.selectedBrand,
-                                      billingAddress: cardViewController.address,
-                                      kcpDetails: kcpDetails,
-                                      socialSecurityNumber: cardViewController.socialSecurityNumber)
+                                      holderName: showsHolderNameField ? holderNameItem.value : nil)
             
             let data = PaymentComponentData(paymentMethodDetails: details,
-                                            amount: amountToPay,
-                                            order: order,
-                                            storePaymentMethod: cardViewController.storePayment,
-                                            installments: cardViewController.installments)
+                                            storePaymentMethod: showsStorePaymentMethodField ? storeDetailsItem.value : false,
+                                            billingAddress: AddressInfo(postalCode: postalCodeItem.value))
             
-            if let number = card.number {
-                let publicSuffix = String(number.suffix(Constant.publicPanSuffixLength))
-                cardComponentDelegate?.didSubmit(lastFour: publicSuffix, component: self)
-            }
-
             submit(data: data)
         } catch {
             delegate?.didFail(with: error, from: self)
@@ -55,52 +55,83 @@ extension CardComponent {
     }
 }
 
-/// :nodoc:
-extension CardComponent: TrackableComponent {
+extension CardComponent {
+    typealias CardKeySuccessHandler = (_ cardPublicKey: String) -> Void
     
-    /// :nodoc:
-    public func viewDidLoad(viewController: UIViewController) {
-        Analytics.sendEvent(component: paymentMethod.type, flavor: _isDropIn ? .dropin : .components, context: apiContext)
-        // just cache the public key value
-        fetchCardPublicKey(notifyingDelegateOnFailure: false)
-    }
-}
-
-extension KCPDetails {
-
-    fileprivate func encrypt(with publicKey: String) throws -> KCPDetails {
-        KCPDetails(taxNumber: taxNumber,
-                   password: try CardEncryptor.encrypt(password: password, with: publicKey))
-    }
-
-}
-
-internal enum CardBrandSorter {
+    typealias CardKeyFailureHandler = (_ error: Swift.Error) -> Void
     
-    /// Sorts the brands by the rules below for dual branded cards.
-    internal static func sortBrands(_ brands: [CardBrand]) -> [CardBrand] {
-        // only try to sort if both brands are available.
-        guard brands.count == 2,
-              let firstBrand = brands.first,
-              let secondBrand = brands.adyen[safeIndex: 1] else { return brands }
-        let hasCarteBancaire = brands.contains { $0.type == .carteBancaire }
-        let hasVisa = brands.contains { $0.type == .visa }
-        let hasPLCC = brands.contains(where: \.isPrivateLabeled)
-        
-        // these rules on web include checks for BCMC as well
-        // but here BCMC component only supports BCMC brand
-        // so dual brand won't be visible as the second brand won't be supported
-        
-        switch (hasVisa, hasCarteBancaire, hasPLCC) {
-        // if regular card and dual branding contains Visa & Cartebancaire - ensure Visa is first
-        case (true, true, _) where secondBrand.type == .visa:
-            return [secondBrand, firstBrand]
-        // if regular card and dual branding contains a PLCC this should be shown first
-        case (_, _, true) where secondBrand.isPrivateLabeled:
-            return [secondBrand, firstBrand]
-        default:
-            return brands
-            
+    func fetchCardPublicKey(onError: CardKeyFailureHandler? = nil, completion: @escaping CardKeySuccessHandler) {
+        do {
+            try cardPublicKeyProvider.fetch { [weak self] in
+                self?.handle(result: $0, onError: onError, completion: completion)
+            }
+        } catch {
+            if let onError = onError {
+                onError(error)
+            } else {
+                delegate?.didFail(with: error, from: self)
+            }
+        }
+    }
+    
+    private func handle(result: Result<String, Swift.Error>, onError: CardKeyFailureHandler? = nil, completion: CardKeySuccessHandler) {
+        switch result {
+        case let .success(key):
+            completion(key)
+        case let .failure(error):
+            if let onError = onError {
+                onError(error)
+            } else {
+                delegate?.didFail(with: error, from: self)
+            }
         }
     }
 }
+
+/// :nodoc:
+extension CardComponent: FormViewControllerDelegate {
+    
+    /// :nodoc:
+    public func viewDidLoad(formViewController: FormViewController) {
+        fetchCardPublicKey(onError: { _ in /* Do nothing, to just cache the card public key value */ },
+                           completion: { _ in /* Do nothing, to just cache the card public key value */ })
+    }
+}
+
+/// :nodoc:
+/// Deprecated initializers
+public extension CardComponent {
+    
+    /// Initializes the card component.
+    ///
+    /// - Parameters:
+    ///   - paymentMethod: The card payment method.
+    ///   - publicKey: The key used for encrypting card data.
+    ///   - style: The Component's UI style.
+    @available(*, deprecated, message: "Use init(paymentMethod:clientKey:style:) instead.")
+    convenience init(paymentMethod: AnyCardPaymentMethod,
+                     publicKey: String,
+                     style: FormComponentStyle = FormComponentStyle()) {
+        let cardPublicKeyProvider = CardPublicKeyProvider(cardPublicKey: publicKey)
+        self.init(paymentMethod: paymentMethod, cardPublicKeyProvider: cardPublicKeyProvider, style: style)
+        if !isPublicKeyValid(key: publicKey) {
+            assertionFailure("Card Public key is invalid, please make sure it’s in the format: {EXPONENT}|{MODULUS}")
+        }
+    }
+    
+    /// :nodoc:
+    /// Initializes the card component.
+    ///
+    /// - Parameters:
+    ///   - paymentMethod: The card payment method.
+    ///   - cardPublicKeyProvider: The card public key provider
+    ///   - style: The Component's UI style.
+    static func component(paymentMethod: AnyCardPaymentMethod,
+                          publicKey: String,
+                          style: FormComponentStyle = FormComponentStyle()) -> CardComponent {
+        let cardPublicKeyProvider = CardPublicKeyProvider(cardPublicKey: publicKey)
+        return CardComponent(paymentMethod: paymentMethod, cardPublicKeyProvider: cardPublicKeyProvider, style: style)
+    }
+}
+
+// swiftlint:enable explicit_acl

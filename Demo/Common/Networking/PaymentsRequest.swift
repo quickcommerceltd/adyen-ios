@@ -1,15 +1,13 @@
 //
-// Copyright (c) 2021 Adyen N.V.
+// Copyright (c) 2020 Adyen N.V.
 //
 // This file is open source and available under the MIT license. See the LICENSE file for more info.
 //
 
 import Adyen
-import AdyenActions
-import AdyenNetworking
 import Foundation
 
-internal struct PaymentsRequest: APIRequest {
+internal struct PaymentsRequest: Request {
     
     internal typealias ResponseType = PaymentsResponse
     
@@ -27,30 +25,22 @@ internal struct PaymentsRequest: APIRequest {
     
     internal func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
-
-        let currentConfiguration = ConfigurationConstants.current
-        let amount = data.amount ?? currentConfiguration.amount
+        
+        let amount = Payment.Amount(value: Configuration.amount.value, currencyCode: Configuration.amount.currencyCode)
         
         try container.encode(data.paymentMethod.encodable, forKey: .details)
         try container.encode(data.storePaymentMethod, forKey: .storePaymentMethod)
-        try container.encodeIfPresent(data.shopperName, forKey: .shopperName)
-        try container.encodeIfPresent(data.emailAddress ?? ConfigurationConstants.shopperEmail, forKey: .shopperEmail)
-        try container.encodeIfPresent(data.telephoneNumber, forKey: .telephoneNumber)
-        try container.encodeIfPresent(data.billingAddress, forKey: .billingAddress)
-        try container.encodeIfPresent(data.deliveryAddress, forKey: .deliveryAddress)
-        try container.encodeIfPresent(data.socialSecurityNumber, forKey: .socialSecurityNumber)
-        try container.encode(Locale.current.identifier, forKey: .shopperLocale)
         try container.encodeIfPresent(data.browserInfo, forKey: .browserInfo)
         try container.encode("iOS", forKey: .channel)
         try container.encode(amount, forKey: .amount)
-        try container.encode(ConfigurationConstants.reference, forKey: .reference)
-        try container.encode(currentConfiguration.countryCode, forKey: .countryCode)
-        try container.encode(ConfigurationConstants.returnUrl, forKey: .returnUrl)
-        try container.encode(ConfigurationConstants.shopperReference, forKey: .shopperReference)
-        try container.encode(ConfigurationConstants.additionalData, forKey: .additionalData)
-        try container.encode(currentConfiguration.merchantAccount, forKey: .merchantAccount)
-        try container.encodeIfPresent(data.order?.compactOrder, forKey: .order)
-        try container.encodeIfPresent(data.installments, forKey: .installments)
+        try container.encode(Configuration.reference, forKey: .reference)
+        try container.encode(Configuration.countryCode, forKey: .countryCode)
+        try container.encode(Configuration.returnUrl, forKey: .returnUrl)
+        try container.encode(Configuration.shopperReference, forKey: .shopperReference)
+        try container.encode(Configuration.shopperEmail, forKey: .shopperEmail)
+        try container.encode(Configuration.additionalData, forKey: .additionalData)
+        try container.encode(Configuration.merchantAccount, forKey: .merchantAccount)
+        try container.encode(data.billingAddress, forKey: .billingAddress)
     }
     
     private enum CodingKeys: String, CodingKey {
@@ -66,14 +56,7 @@ internal struct PaymentsRequest: APIRequest {
         case additionalData
         case merchantAccount
         case browserInfo
-        case shopperName
-        case telephoneNumber
-        case shopperLocale
         case billingAddress
-        case deliveryAddress
-        case socialSecurityNumber
-        case order
-        case installments
     }
     
 }
@@ -83,20 +66,16 @@ internal struct PaymentsResponse: Response {
     internal let resultCode: ResultCode
     
     internal let action: Action?
-
-    internal let order: PartialPaymentOrder?
     
     internal init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         self.resultCode = try container.decode(ResultCode.self, forKey: .resultCode)
         self.action = try container.decodeIfPresent(Action.self, forKey: .action)
-        self.order = try container.decodeIfPresent(PartialPaymentOrder.self, forKey: .order)
     }
     
     private enum CodingKeys: String, CodingKey {
         case resultCode
         case action
-        case order
     }
     
 }
@@ -114,7 +93,6 @@ internal extension PaymentsResponse {
         case redirectShopper = "RedirectShopper"
         case identifyShopper = "IdentifyShopper"
         case challengeShopper = "ChallengeShopper"
-        case presentToShopper = "PresentToShopper"
     }
     
 }
