@@ -42,7 +42,6 @@
 "adyen.phoneNumber.placeholder" = "123–456–789";
 "adyen.card.cvcItem.placeholder.digits" = "%@ cyfry";
 "adyen.emailItem.title" = "Adres e-mail";
-"adyen.emailItem.placeHolder" = "Adres e-mail";
 "adyen.emailItem.invalid" = "Niepoprawny adres email";
 "adyen.moreOptions" = "Więcej opcji";
 "adyen.mbway.confirmPayment" = "Potwierdź płatność w aplikacji MB WAY";
