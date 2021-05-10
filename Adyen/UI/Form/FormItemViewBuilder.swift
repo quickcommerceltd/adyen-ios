@@ -1,5 +1,5 @@
 //
-// Copyright (c) 2021 Adyen N.V.
+// Copyright (c) 2020 Adyen N.V.
 //
 // This file is open source and available under the MIT license. See the LICENSE file for more info.
 //
@@ -10,16 +10,28 @@ import Foundation
 /// :nodoc:
 public struct FormItemViewBuilder {
     
-    /// Builds `FormToggleItemView` from `FormToggleItem`.
+    /// Builds `FormHeaderItemView` from `FormHeaderItem`.
     /// :nodoc:
-    public func build(with item: FormToggleItem) -> FormItemView<FormToggleItem> {
-        FormToggleItemView(item: item)
+    public func build(with item: FormHeaderItem) -> FormItemView<FormHeaderItem> {
+        FormHeaderItemView(item: item)
     }
     
-    /// Builds `FormSplitItemView` from `FormSplitItem`.
+    /// Builds `FormFooterItemView` from `FormFooterItem`.
     /// :nodoc:
-    public func build(with item: FormSplitItem) -> FormItemView<FormSplitItem> {
-        FormSplitItemView(item: item)
+    public func build(with item: FormFooterItem) -> FormItemView<FormFooterItem> {
+        FormFooterItemView(item: item)
+    }
+    
+    /// Builds `FormSwitchItemView` from `FormSwitchItem`.
+    /// :nodoc:
+    public func build(with item: FormSwitchItem) -> FormItemView<FormSwitchItem> {
+        FormSwitchItemView(item: item)
+    }
+    
+    /// Builds `FormSplitTextItemView` from `FormSplitTextItem`.
+    /// :nodoc:
+    public func build(with item: FormSplitTextItem) -> FormItemView<FormSplitTextItem> {
+        FormSplitTextItemView(item: item)
     }
     
     /// Builds `PhoneNumberItemView` from `PhoneNumberItem`.
@@ -30,14 +42,8 @@ public struct FormItemViewBuilder {
     
     /// Builds `FormPhoneExtensionPickerItemView` from `FormPhoneExtensionPickerItem`.
     /// :nodoc:
-    public func build(with item: FormPhoneExtensionPickerItem) -> BaseFormPickerItemView<PhoneExtension> {
+    internal func build(with item: FormPhoneExtensionPickerItem) -> FormItemView<FormPhoneExtensionPickerItem> {
         FormPhoneExtensionPickerItemView(item: item)
-    }
-
-    /// Builds `FormRegionPickerItemView` from `FormRegionPickerItem`.
-    /// :nodoc:
-    public func build(with item: FormRegionPickerItem) -> BaseFormPickerItemView<Region> {
-        FormRegionPickerItemView(item: item)
     }
     
     /// Builds `FormTextInputItemView` from `FormTextInputItem`.
@@ -64,29 +70,5 @@ public struct FormItemViewBuilder {
     /// :nodoc:
     public func build(with item: FormSeparatorItem) -> FormItemView<FormSeparatorItem> {
         FormSeparatorItemView(item: item)
-    }
-
-    /// Builds `FormErrorItemView` from `FormErrorItem`.
-    /// :nodoc:
-    public func build(with item: FormErrorItem) -> FormItemView<FormErrorItem> {
-        FormErrorItemView(item: item)
-    }
-    
-    /// Builds `FormVerticalStackItemView` from `FormAddressItem`.
-    /// :nodoc:
-    public func build(with item: FormAddressItem) -> FormItemView<FormAddressItem> {
-        FormVerticalStackItemView(item: item)
-    }
-
-    /// Builds `FormSpacerItemView` from `FormSpacerItem`.
-    /// :nodoc:
-    public func build(with item: FormSpacerItem) -> FormItemView<FormSpacerItem> {
-        FormSpacerItemView(item: item)
-    }
-
-    public static func build(_ item: FormItem) -> AnyFormItemView {
-        let itemView = item.build(with: FormItemViewBuilder())
-        itemView.accessibilityIdentifier = item.identifier
-        return itemView
     }
 }

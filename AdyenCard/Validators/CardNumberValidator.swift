@@ -1,5 +1,5 @@
 //
-// Copyright (c) 2021 Adyen N.V.
+// Copyright (c) 2019 Adyen N.V.
 //
 // This file is open source and available under the MIT license. See the LICENSE file for more info.
 //
@@ -11,40 +11,20 @@ import Foundation
 /// The input is expected to be sanitized.
 public final class CardNumberValidator: Validator {
     
-    private enum Constants {
-        static let maxPanLength = 19
-    }
-    
-    /// Indicates whether to validate for luhn check
-    private let isLuhnCheckEnabled: Bool
-    
-    /// Indicates whether the detected brand is supported or not.
-    private let isEnteredBrandSupported: Bool
-    
-    /// Length of the card number if available.
-    private let panLength: Int?
-    
     /// :nodoc:
-    public init(isLuhnCheckEnabled: Bool,
-                isEnteredBrandSupported: Bool,
-                panLength: Int? = nil) {
-        self.isLuhnCheckEnabled = isLuhnCheckEnabled
-        self.isEnteredBrandSupported = isEnteredBrandSupported
-        self.panLength = panLength
-    }
+    public init() {}
     
     /// :nodoc:
     public func isValid(_ value: String) -> Bool {
-        guard isEnteredBrandSupported else { return false }
         let minimumValidCardLength = 12
-        let isValid = value.count >= minimumValidCardLength && (!isLuhnCheckEnabled || luhnCheck(value))
+        let isValid = value.count >= minimumValidCardLength && luhnCheck(value)
         
         return isValid
     }
     
     /// :nodoc:
     public func maximumLength(for value: String) -> Int {
-        panLength ?? Constants.maxPanLength
+        19
     }
     
     // MARK: - Private

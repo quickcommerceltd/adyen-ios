@@ -1,5 +1,5 @@
 //
-// Copyright (c) 2021 Adyen N.V.
+// Copyright (c) 2020 Adyen N.V.
 //
 // This file is open source and available under the MIT license. See the LICENSE file for more info.
 //
@@ -28,11 +28,10 @@ private struct LocalizationInput {
 ///   - parameters: The localization parameters.
 ///   - arguments: The arguments to substitute in the templated localized string.
 /// - Returns: The localized string for the given key, or the key itself if the localized string could not be found.
-public func localizedString(_ key: LocalizationKey, _ parameters: LocalizationParameters?, _ arguments: CVarArg...) -> String {
-    
-    // Use fallback in case attempt result is nil or empty
-    let result = attempt(buildPossibleInputs(key.key, parameters))
-        .flatMap(\.adyen.nilIfEmpty) ?? fallbackLocalizedString(key: key.key)
+public func ADYLocalizedString(_ key: String, _ parameters: LocalizationParameters?, _ arguments: CVarArg...) -> String {
+    let possibleInputs = buildPossibleInputs(key, parameters)
+
+    let result = attempt(possibleInputs) ?? fallbackLocalizedString(key: key)
     
     guard !arguments.isEmpty else {
         return result
@@ -42,16 +41,7 @@ public func localizedString(_ key: LocalizationKey, _ parameters: LocalizationPa
 }
 
 private func fallbackLocalizedString(key: String) -> String {
-    let localizedFallback = NSLocalizedString(key, tableName: nil, bundle: Bundle.coreInternalResources, comment: "")
-    
-    if localizedFallback != key, localizedFallback.isEmpty == false {
-        return localizedFallback
-    } else {
-        // Fallback to en-US
-        return Bundle.coreInternalResources.path(forResource: "en-US", ofType: "lproj")
-            .flatMap(Bundle.init(path:))
-            .map { NSLocalizedString(key, tableName: nil, bundle: $0, comment: "") } ?? key
-    }
+    NSLocalizedString(key, tableName: nil, bundle: Bundle.coreInternalResources, comment: "")
 }
 
 private func buildPossibleInputs(_ key: String,
@@ -113,26 +103,26 @@ public enum PaymentStyle {
 /// - Parameter amount: The amount to include in the submit button title.
 /// - Parameter paymentMethodName: The payment method name.
 /// - Parameter parameters: The localization parameters.
-public func localizedSubmitButtonTitle(with amount: Amount?,
-                                       style: PaymentStyle,
-                                       _ parameters: LocalizationParameters?) -> String {
+public func ADYLocalizedSubmitButtonTitle(with amount: Payment.Amount?,
+                                          style: PaymentStyle,
+                                          _ parameters: LocalizationParameters?) -> String {
     if let amount = amount, amount.value == 0 {
-        return localizedZeroPaymentAuthorisationButtonTitle(style: style,
-                                                            parameters)
+        return ADYLocalizedZeroPaymentAuthorisationButtonTitle(style: style,
+                                                               parameters)
     }
     guard let formattedAmount = amount?.formatted else {
-        return localizedString(.submitButton, parameters)
+        return ADYLocalizedString("adyen.submitButton", parameters)
     }
     
-    return localizedString(.submitButtonFormatted, parameters, formattedAmount)
+    return ADYLocalizedString("adyen.submitButton.formatted", parameters, formattedAmount)
 }
 
-private func localizedZeroPaymentAuthorisationButtonTitle(style: PaymentStyle,
-                                                          _ parameters: LocalizationParameters?) -> String {
+private func ADYLocalizedZeroPaymentAuthorisationButtonTitle(style: PaymentStyle,
+                                                             _ parameters: LocalizationParameters?) -> String {
     switch style {
     case let .needsRedirectToThirdParty(name):
-        return localizedString(.preauthorizeWith, parameters, name)
+        return ADYLocalizedString("adyen.preauthorizeWith", parameters, name)
     case .immediate:
-        return localizedString(.confirmPreauthorization, parameters)
+        return ADYLocalizedString("adyen.confirmPreauthorization", parameters)
     }
 }

@@ -62,9 +62,8 @@ public class FormContainerItem: FormItem {
 /// :nodoc:
 extension FormItem {
 
-    /// :nodoc:
-    public func addingDefaultMargins() -> FormContainerItem {
-        FormContainerItem(content: self, padding: .zero)
+    public func withPadding(padding: UIEdgeInsets) -> FormContainerItem {
+        FormContainerItem(content: self, padding: padding)
     }
 
 }
