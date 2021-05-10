@@ -26,12 +26,8 @@ class LengthValidatorTests: XCTestCase {
         XCTAssertFalse(testMaximumLength("12", maximumLength: 4))
     }
     
-    func validate(_ string: String, minimumLength: Int? = nil, maximumLength: Int? = nil) -> Bool {
-        LengthValidator(minimumLength: minimumLength, maximumLength: maximumLength).isValid(string)
-    }
-
-    func validate(_ string: String, exactLength: Int) -> Bool {
-        LengthValidator(exactLength: exactLength).isValid(string)
+    func validate(_ string: String, minimumLength: Int? = nil, maximumLenght: Int? = nil) -> Bool {
+        LengthValidator(minimumLength: minimumLength, maximumLength: maximumLenght).isValid(string)
     }
     
     func testMaximumLength(_ string: String, maximumLength: Int?) -> Bool {

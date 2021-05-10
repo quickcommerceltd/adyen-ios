@@ -20,11 +20,7 @@ public struct StoredPayPalPaymentMethod: StoredPaymentMethod {
     public let supportedShopperInteractions: [ShopperInteraction]
 
     public var displayInformation: DisplayInformation {
-        DisplayInformation(title: name, subtitle: emailAddress, logoName: type)
-    }
-
-    public func localizedDisplayInformation(using parameters: LocalizationParameters?) -> DisplayInformation {
-        DisplayInformation(title: name, subtitle: emailAddress, logoName: type)
+        DisplayInformation(title: emailAddress, subtitle: nil, logoName: type)
     }
     
     /// The email address of the PayPal account.

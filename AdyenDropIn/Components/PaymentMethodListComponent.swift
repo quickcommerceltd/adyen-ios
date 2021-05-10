@@ -139,7 +139,7 @@ internal final class PaymentMethodListComponent: ComponentLoader, PresentableCom
     /// - Parameter component: The component for which to start a loading animation.
     internal func startLoading(for component: PaymentComponent) {
         let allListItems = listViewController.sections.flatMap(\.items)
-        let allComponents = componentSections.map(\.components).flatMap { $0 }
+        let allComponents = [components.stored, components.regular].flatMap { $0 }
         
         guard let index = allComponents.firstIndex(where: { $0 === component }) else {
             return
